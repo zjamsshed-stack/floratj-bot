@@ -123,7 +123,7 @@ bot.on('text', async (ctx) => {
       await ctx.reply('📞 Ваш номер?');
     } 
     else if (state.step === 'ask_phone') {
-      if (!text.match(/[\d\s\+\-\(\)]{5,}/)) {
+    if (text.length < 5) {
         await ctx.reply('❌ Номер неверный');
         return;
       }
