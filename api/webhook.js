@@ -21,7 +21,6 @@ const bouquetSchema = new mongoose.Schema({
   price: Number,
   city: String,
   district: String,
-  description: String,
   createdAt: { type: Date, default: Date.now },
   isActive: Boolean
 });
@@ -31,20 +30,18 @@ let mongooseConnection = null;
 
 async function connectDB() {
   if (mongooseConnection && mongooseConnection.readyState === 1) {
+    if (!Bouquet) {
+      Bouquet = mongooseConnection.model('Bouquet', bouquetSchema);
+    }
     return Bouquet;
   }
   
-  if (!mongooseConnection) {
-    mongooseConnection = await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 10000,
-    });
-  }
+  mongooseConnection = await mongoose.connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 10000,
+  });
   
-  if (!Bouquet) {
-    Bouquet = mongooseConnection.model('Bouquet', bouquetSchema);
-  }
-  
+  Bouquet = mongooseConnection.model('Bouquet', bouquetSchema);
   return Bouquet;
 }
 
@@ -52,35 +49,29 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const userState = {};
 
 bot.command('start', async (ctx) => {
-  const userId = ctx.from.id;
-  userState[userId] = { step: 'menu' };
-  await ctx.reply(
-    '🌹 *Добро пожаловать в FloraTJ!*\n\nЗдесь девушки продают подаренные букеты, а покупатели находят свежие цветы рядом с домом.\n\nЧто вы хотите сделать?',
-    Markup.keyboard([['💐 Продам букет'], ['🛍️ Купить букет'], ['📋 Мои букеты']]).oneTime().resize()
-  );
+  userState[ctx.from.id] = { step: 'menu' };
+  await ctx.reply('🌹 Добро пожаловать в FloraTJ!\n\nЧто вы хотите сделать?', 
+    Markup.keyboard([['💐 Продам букет'], ['🛍️ Купить букет'], ['📋 Мои букеты']]).oneTime().resize());
 });
 
 bot.hears('💐 Продам букет', async (ctx) => {
-  const userId = ctx.from.id;
-  userState[userId] = { step: 'upload_photo' };
-  await ctx.reply('📸 Отлично! Загрузите фото букета.');
+  userState[ctx.from.id] = { step: 'upload_photo' };
+  await ctx.reply('📸 Загрузите фото букета');
 });
 
 bot.on('photo', async (ctx) => {
   try {
     const userId = ctx.from.id;
     if (!userState[userId] || userState[userId].step !== 'upload_photo') {
-      await ctx.reply('Пожалуйста, нажмите "Продам букет"');
+      await ctx.reply('Нажмите "Продам букет"');
       return;
     }
-
     const photoId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
     userState[userId].photoId = photoId;
     userState[userId].step = 'ask_price';
-    await ctx.reply('💰 Сколько стоит букет? (число)');
+    await ctx.reply('💰 Цена букета? (число)');
   } catch (error) {
-    console.error('Ошибка фото:', error);
-    await ctx.reply('❌ Ошибка. Попробуйте снова.');
+    await ctx.reply('❌ Ошибка');
   }
 });
 
@@ -89,7 +80,6 @@ bot.on('text', async (ctx) => {
     const userId = ctx.from.id;
     const text = ctx.message.text;
     if (!userState[userId]) return;
-
     const state = userState[userId];
 
     if (state.step === 'ask_price') {
@@ -100,8 +90,8 @@ bot.on('text', async (ctx) => {
       }
       state.price = price;
       state.step = 'select_city';
-      const cityButtons = Object.keys(CITIES).map(city => [city]);
-      await ctx.reply('🗺️ Город?', Markup.keyboard(cityButtons).resize().oneTime());
+      const buttons = Object.keys(CITIES).map(c => [c]);
+      await ctx.reply('🗺️ Город?', Markup.keyboard(buttons).resize().oneTime());
     } 
     else if (state.step === 'select_city') {
       if (!CITIES[text]) {
@@ -110,8 +100,8 @@ bot.on('text', async (ctx) => {
       }
       state.city = text;
       state.step = 'select_district';
-      const districtButtons = CITIES[text].map(d => [d]);
-      await ctx.reply('📍 Район?', Markup.keyboard(districtButtons).resize().oneTime());
+      const buttons = CITIES[text].map(d => [d]);
+      await ctx.reply('📍 Район?', Markup.keyboard(buttons).resize().oneTime());
     } 
     else if (state.step === 'select_district') {
       if (!CITIES[state.city].includes(text)) {
@@ -123,12 +113,7 @@ bot.on('text', async (ctx) => {
       await ctx.reply('📞 Ваш номер?');
     } 
     else if (state.step === 'ask_phone') {
-    if (text.length < 5) {
-        await ctx.reply('❌ Номер неверный');
-        return;
-      }
       state.phone = text;
-
       const BouquetModel = await connectDB();
       const newBouquet = new BouquetModel({
         sellerId: userId,
@@ -143,21 +128,20 @@ bot.on('text', async (ctx) => {
       await newBouquet.save();
       delete userState[userId];
       
-      await ctx.reply('✅ Букет выставлен!\n🗺️ ' + state.city + '\n📍 ' + state.district + '\n💰 ' + state.price + ' сомони');
+      await ctx.reply('✅ Букет выставлен!\n🗺️ ' + state.city + '\n📍 ' + state.district + '\n💰 ' + state.price);
       await ctx.reply('Что дальше?', Markup.keyboard([['💐 Продам букет'], ['🛍️ Купить букет'], ['📋 Мои букеты']]).oneTime().resize());
     }
   } catch (error) {
     console.error('Ошибка:', error);
-    await ctx.reply('❌ Ошибка. Попробуйте снова.');
+    await ctx.reply('❌ Ошибка. Попробуйте снова');
   }
 });
 
 bot.hears('🛍️ Купить букет', async (ctx) => {
-  const userId = ctx.from.id;
-  userState[userId] = { step: 'select_buy_city' };
-  const cityButtons = Object.keys(CITIES).map(city => [city]);
-  cityButtons.push(['⬅️ Назад']);
-  await ctx.reply('🗺️ Город?', Markup.keyboard(cityButtons).resize().oneTime());
+  userState[ctx.from.id] = { step: 'select_buy_city' };
+  const buttons = Object.keys(CITIES).map(c => [c]);
+  buttons.push(['⬅️ Назад']);
+  await ctx.reply('🗺️ Город?', Markup.keyboard(buttons).resize().oneTime());
 });
 
 bot.hears(Object.keys(CITIES), async (ctx) => {
@@ -169,16 +153,14 @@ bot.hears(Object.keys(CITIES), async (ctx) => {
     if (userState[userId].step === 'select_buy_city') {
       userState[userId].city = city;
       userState[userId].step = 'select_buy_district';
-      const districtButtons = CITIES[city].map(d => [d]);
-      districtButtons.push(['⬅️ Назад']);
-      await ctx.reply('📍 Район?', Markup.keyboard(districtButtons).resize().oneTime());
+      const buttons = CITIES[city].map(d => [d]);
+      buttons.push(['⬅️ Назад']);
+      await ctx.reply('📍 Район?', Markup.keyboard(buttons).resize().oneTime());
       return;
     }
 
     if (userState[userId].step === 'select_buy_district') {
-      const cityDistricts = CITIES[userState[userId].city];
-      if (!cityDistricts.includes(city)) return;
-
+      if (!CITIES[userState[userId].city].includes(city)) return;
       const BouquetModel = await connectDB();
       const bouquets = await BouquetModel.find({
         city: userState[userId].city,
@@ -187,17 +169,15 @@ bot.hears(Object.keys(CITIES), async (ctx) => {
       }).lean();
 
       if (bouquets.length === 0) {
-        await ctx.reply('😔 Нет букетов в этом районе');
+        await ctx.reply('😔 Нет букетов');
         return;
       }
 
       for (const b of bouquets) {
         await ctx.replyWithPhoto(b.photoId, {
-          caption: '🗺️ ' + b.city + '\n📍 ' + b.district + '\n💰 ' + b.price + ' сомони\n📞 ' + b.sellerPhone
+          caption: '🗺️ ' + b.city + '\n📍 ' + b.district + '\n💰 ' + b.price + '\n📞 ' + b.sellerPhone
         });
       }
-
-      await ctx.reply('Что дальше?', Markup.keyboard([['💐 Продам букет'], ['🛍️ Купить букет'], ['📋 Мои букеты']]).oneTime().resize());
       delete userState[userId];
     }
   } catch (error) {
@@ -210,20 +190,15 @@ bot.hears('📋 Мои букеты', async (ctx) => {
   try {
     const userId = ctx.from.id;
     const BouquetModel = await connectDB();
-    const myBouquets = await BouquetModel.find({ sellerId: userId.toString(), isActive: true }).lean();
-
-    if (myBouquets.length === 0) {
+    const bouquets = await BouquetModel.find({sellerId: userId.toString(), isActive: true}).lean();
+    if (bouquets.length === 0) {
       await ctx.reply('У вас нет букетов');
       return;
     }
-
-    for (const b of myBouquets) {
-      await ctx.replyWithPhoto(b.photoId, {
-        caption: '💐 ' + b.district + '\n💰 ' + b.price + ' сомони\n📞 ' + b.sellerPhone
-      });
+    for (const b of bouquets) {
+      await ctx.replyWithPhoto(b.photoId, {caption: '💐 ' + b.district + '\n💰 ' + b.price + '\n📞 ' + b.sellerPhone});
     }
   } catch (error) {
-    console.error('Ошибка:', error);
     await ctx.reply('❌ Ошибка');
   }
 });
@@ -237,11 +212,10 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       await bot.handleUpdate(req.body);
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ok: true});
     }
-    return res.status(200).json({ status: 'ok' });
+    return res.status(200).json({status: 'ok'});
   } catch (error) {
-    console.error('Error:', error);
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ok: true});
   }
 }
