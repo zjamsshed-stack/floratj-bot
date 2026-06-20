@@ -1,0 +1,18 @@
+{
+  "name": "floratj-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for selling flowers in Tajikistan",
+  "main": "api/webhook.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel"
+  },
+  "dependencies": {
+    "telegraf": "^4.14.1",
+    "mongoose": "^7.6.3",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": "18"
+  }
+}
